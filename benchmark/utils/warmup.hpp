@@ -21,4 +21,4 @@ inline void warmup() {
     std::atomic_thread_fence(std::memory_order_seq_cst);
 }
 
-}  // namespace bench
+} 

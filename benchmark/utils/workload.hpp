@@ -98,4 +98,4 @@ private:
     std::vector<lob::OrderId> ids_;
 };
 
-}  // namespace bench
+} 

@@ -11,4 +11,4 @@ constexpr int ORDERS_PER_LEVEL = 10;
 constexpr size_t WARMUP_ITERATIONS = 10000;
 constexpr size_t BENCHMARK_SAMPLES = 100000;
 
-}  // namespace bench
+}

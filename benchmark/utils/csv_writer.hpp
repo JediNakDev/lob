@@ -39,4 +39,4 @@ inline std::unique_ptr<CSVWriter>& csv() {
     return instance;
 }
 
-}  // namespace bench
+} 

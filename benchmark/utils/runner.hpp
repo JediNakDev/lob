@@ -84,4 +84,4 @@ private:
     size_t samples_ = BENCHMARK_SAMPLES;
 };
 
-}  // namespace bench
+} 
