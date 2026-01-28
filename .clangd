@@ -1,5 +1,6 @@
 CompileFlags:
   Add:
     - -std=c++17
-    - -I.
-    - -Iinclude
+    - -xc++
+  Remove:
+    - -W*

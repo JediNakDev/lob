@@ -1,6 +1,6 @@
 #include "matching_tests.hpp"
 #include "test_framework.hpp"
-#include "../include/lob/order_book.hpp"
+#include <lob/order_book.hpp>
 #include <cassert>
 #include <cmath>
 

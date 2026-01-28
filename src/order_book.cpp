@@ -1,4 +1,4 @@
-#include "../include/lob/order_book.hpp"
+#include <lob/order_book.hpp>
 #include <optional>
 
 namespace lob {
