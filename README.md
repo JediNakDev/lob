@@ -22,14 +22,14 @@ make clean  # Clean build artifacts
 
 | Benchmark | Mean | P99 | P99.99 | Throughput |
 |-----------|------|-----|--------|------------|
-| GetBestBid | 19 ns | 42 ns | 1.4 µs | 53 M/s |
-| GetBestAsk | 17 ns | 42 ns | 166 ns | 58 M/s |
-| GetSpread | 18 ns | 42 ns | 167 ns | 57 M/s |
-| CancelOrder | 23 ns | 125 ns | 459 ns | 43 M/s |
-| ModifyOrder | 24 ns | 42 ns | 167 ns | 42 M/s |
-| AddOrder | 109 ns | 792 ns | 34 µs | 9.2 M/s |
-| MatchOrder | 160 ns | 292 ns | 23 µs | 6.3 M/s |
-| MixedWorkload | 69 ns | 459 ns | 20 µs | 11 M/s |
+| GetBestBid | 19 ns | 42 ns | 1.4 µs | 53 Mops/s |
+| GetBestAsk | 17 ns | 42 ns | 166 ns | 58 Mops/s |
+| GetSpread | 18 ns | 42 ns | 167 ns | 57 Mops/s |
+| CancelOrder | 23 ns | 125 ns | 459 ns | 43 Mops/s |
+| ModifyOrder | 24 ns | 42 ns | 167 ns | 42 Mops/s |
+| AddOrder | 109 ns | 792 ns | 34 µs | 9.2 Mops/s |
+| MatchOrder | 160 ns | 292 ns | 23 µs | 6.3 Mops/s |
+| MixedWorkload | 69 ns | 459 ns | 20 µs | 11 Mops/s |
 
 See [benchmark/README.md](benchmark/README.md) for methodology.
 
@@ -51,7 +51,3 @@ See [benchmark/README.md](benchmark/README.md) for methodology.
 3. Thread safety / lock-free structures
 4. Memory pool allocators
 5. Intrusive containers
-
-## License
-
-MIT
