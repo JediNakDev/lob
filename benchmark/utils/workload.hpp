@@ -12,7 +12,7 @@ namespace bench {
 class RandomWorkload {
 public:
     struct OrderData {
-        double price;
+        lob::Price price;
         uint64_t quantity;
         lob::Side side;
     };
@@ -25,7 +25,7 @@ public:
           side_dist_(0, 1) {
         orders_.reserve(count);
         for (size_t i = 0; i < count; ++i) {
-            orders_.push_back({round_to_tick(price_dist_(rng_)), qty_dist_(rng_),
+            orders_.push_back({price_dist_(rng_), qty_dist_(rng_),
                                side_dist_(rng_) == 0 ? lob::Side::BUY : lob::Side::SELL});
         }
 
@@ -56,12 +56,8 @@ public:
     }
 
 private:
-    double round_to_tick(double price) const noexcept {
-        return std::round(price / TICK_SIZE) * TICK_SIZE;
-    }
-
     std::mt19937_64 rng_;
-    std::uniform_real_distribution<double> price_dist_;
+    std::uniform_int_distribution<lob::Price> price_dist_;
     std::uniform_int_distribution<uint64_t> qty_dist_;
     std::uniform_int_distribution<int> side_dist_;
     std::vector<OrderData> orders_;
@@ -81,8 +77,8 @@ public:
         std::uniform_int_distribution<uint64_t> qty_dist(100, 10000);
 
         for (int i = 1; i <= levels; ++i) {
-            double bid_price = BASE_PRICE - i * TICK_SIZE;
-            double ask_price = BASE_PRICE + i * TICK_SIZE;
+            lob::Price bid_price = BASE_PRICE - i * TICK_SIZE;
+            lob::Price ask_price = BASE_PRICE + i * TICK_SIZE;
             for (int j = 0; j < orders_per_level; ++j) {
                 ids_.push_back(book_.add_order(bid_price, qty_dist(rng), lob::Side::BUY).order_id);
                 ids_.push_back(book_.add_order(ask_price, qty_dist(rng), lob::Side::SELL).order_id);

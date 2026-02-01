@@ -27,7 +27,7 @@ static void BM_MatchOrder(benchmark::State& state) {
             auto best_bid = book.get_best_bid();
             auto best_ask = book.get_best_ask();
 
-            double price;
+            lob::Price price;
             lob::Side side;
             if (i % 2 == 0 && best_ask) {
                 price = *best_ask;
@@ -51,7 +51,7 @@ static void BM_MatchOrder(benchmark::State& state) {
             if (book.get_total_orders() < 100) {
                 for (int j = 0; j < 10; ++j) {
                     const auto& refill = w.get(idx++);
-                    double refill_price = refill.side == lob::Side::BUY
+                    lob::Price refill_price = refill.side == lob::Side::BUY
                                               ? BASE_PRICE - (j + 1) * TICK_SIZE
                                               : BASE_PRICE + (j + 1) * TICK_SIZE;
                     (void)book.add_order(refill_price, refill.quantity, refill.side);
@@ -59,14 +59,14 @@ static void BM_MatchOrder(benchmark::State& state) {
             }
         }
 
-        state.counters["TotalFills"] = total_fills;
+        state.counters["TotalFills"] = static_cast<double>(total_fills);
         state.counters["FillRate"] = static_cast<double>(total_fills) / BENCHMARK_SAMPLES;
     }
 
     auto stats = Stats::compute(latencies);
     stats.report(state);
     if (csv()) csv()->write("MatchOrder", stats);
-    state.SetItemsProcessed(state.iterations() * BENCHMARK_SAMPLES);
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations() * BENCHMARK_SAMPLES));
     state.SetLabel("Aggressive orders crossing spread");
 }
 

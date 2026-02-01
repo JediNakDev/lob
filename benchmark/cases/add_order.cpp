@@ -17,9 +17,9 @@ static void BM_AddOrder(benchmark::State& state) {
         },
         [&](size_t i) {
             const auto& order = w.get(idx++);
-            double price = order.side == lob::Side::BUY
-                               ? BASE_PRICE - 50 * TICK_SIZE - (i % 50) * TICK_SIZE
-                               : BASE_PRICE + 50 * TICK_SIZE + (i % 50) * TICK_SIZE;
+            lob::Price price = order.side == lob::Side::BUY
+                               ? BASE_PRICE - 50 * TICK_SIZE - static_cast<lob::Price>(i % 50) * TICK_SIZE
+                               : BASE_PRICE + 50 * TICK_SIZE + static_cast<lob::Price>(i % 50) * TICK_SIZE;
             return book.add_order(price, order.quantity, order.side);
         });
 }

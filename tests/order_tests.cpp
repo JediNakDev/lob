@@ -8,7 +8,7 @@ using namespace lob;
 void test_add_order_to_empty_book() {
     OrderBook book;
     
-    auto result = book.add_order(100.0, 50, Side::BUY);
+    auto result = book.add_order(10000, 50, Side::BUY);  // 100.00
     
     assert(result.order_id == 1);
     assert(result.fills.empty());
@@ -21,9 +21,9 @@ void test_add_order_to_empty_book() {
 void test_multiple_orders_same_price_level() {
     OrderBook book;
     
-    (void)book.add_order(100.0, 50, Side::BUY);
-    (void)book.add_order(100.0, 30, Side::BUY);
-    (void)book.add_order(100.0, 20, Side::BUY);
+    (void)book.add_order(10000, 50, Side::BUY);
+    (void)book.add_order(10000, 30, Side::BUY);
+    (void)book.add_order(10000, 20, Side::BUY);
     
     assert(book.get_total_orders() == 3);
     assert(book.get_bid_levels() == 1);
@@ -33,8 +33,8 @@ void test_multiple_orders_same_price_level() {
 void test_cancel_order() {
     OrderBook book;
     
-    auto r1 = book.add_order(100.0, 50, Side::BUY);
-    (void)book.add_order(100.0, 30, Side::BUY);
+    auto r1 = book.add_order(10000, 50, Side::BUY);
+    (void)book.add_order(10000, 30, Side::BUY);
     
     assert(book.get_total_orders() == 2);
     assert(book.get_bid_quantity_at_top() == 80);
@@ -57,7 +57,7 @@ void test_cancel_nonexistent_order() {
 void test_cancel_removes_empty_price_level() {
     OrderBook book;
     
-    auto result = book.add_order(100.0, 50, Side::BUY);
+    auto result = book.add_order(10000, 50, Side::BUY);
     
     assert(book.get_bid_levels() == 1);
     
@@ -69,7 +69,7 @@ void test_cancel_removes_empty_price_level() {
 void test_modify_order() {
     OrderBook book;
     
-    auto result = book.add_order(100.0, 50, Side::BUY);
+    auto result = book.add_order(10000, 50, Side::BUY);
     
     assert(book.get_bid_quantity_at_top() == 50);
     
