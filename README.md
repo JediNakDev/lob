@@ -19,37 +19,42 @@ Implemented optimizations based on ["How to Build a Fast Limit Order Book"](http
 
 - **Integer Prices**: Changed from `double` to `int64_t` (ticks) for faster comparisons and better hashing
 - **Intrusive Doubly-Linked Lists**: Orders contain `prev/next` pointers for O(1) removal
-- **Hash Maps**: Replaced `std::map` with `std::unordered_map` for O(1) price level lookup
-- **Cached Best Bid/Ask**: Direct pointer access instead of tree traversal
-- **Linked Price Levels**: Sorted linked list enables O(1) best price updates when levels are deleted
+- **Hash Maps**: `std::unordered_map` for O(1) price level and order lookup
+- **Binary Search Tree**: Price levels organized in BST for O(log M) insertion of new levels
+- **Cached Best Bid/Ask**: Direct pointer access (`highest_buy_`/`lowest_sell_`) for O(1) best price queries
 
 ### Performance Summary
 
-**AddOrder 47 ns | MatchOrder 112 ns | MixedWorkload 17 Mops/s**
+**AddOrder 47 ns | MatchOrder 117 ns | MixedWorkload 16.6 Mops/s**
 
-| Benchmark | Mean | P99 | P99.99 | vs 1.0.0 |
-|-----------|------|-----|--------|----------|
-| GetBestBid | 17 ns | 42 ns | 125 ns | ~same |
-| GetBestAsk | 16 ns | 42 ns | 125 ns | ~same |
-| GetSpread | 16 ns | 42 ns | 125 ns | ~same |
-| CancelOrder | 16 ns | 42 ns | 167 ns | **1.4x faster** |
-| ModifyOrder | 15 ns | 42 ns | 125 ns | **1.6x faster** |
-| AddOrder | 47 ns | 84 ns | 875 ns | **2.3x faster** |
-| MatchOrder | 112 ns | 167 ns | 10.7 µs | **1.4x faster** |
-| MixedWorkload | 40 ns | 292 ns | 708 ns | **1.5x faster** |
+#### Significant Improvements vs 1.0.0
+
+| Operation | Mean | Improvement |
+|-----------|------|-------------|
+| AddOrder | 47 ns | **2.3x faster** (was 109 ns) |
+| CancelOrder | 16 ns | **1.4x faster** (was 23 ns) |
+| ModifyOrder | 15 ns | **1.6x faster** (was 24 ns) |
+| MatchOrder | 117 ns | **1.4x faster** (was 160 ns) |
+| MixedWorkload | 42 ns | **1.6x faster** (was 69 ns) |
+
+#### Tail Latency Improvements
+
+| Operation | P99 | P99.99 | vs 1.0.0 |
+|-----------|-----|--------|----------|
+| AddOrder | 84 ns | 1.8 µs | P99 **9x better** (was 792 ns), P99.99 **19x better** (was 34 µs) |
+| MatchOrder | 209 ns | 334 ns | P99.99 **69x better** (was 23 µs) |
+| MixedWorkload | 292 ns | 708 ns | P99.99 **28x better** (was 20 µs) |
 
 ### Time Complexity
 
 | Operation       | Complexity | Notes |
 |-----------------|------------|-------|
-| `add_order`     | O(1) / O(M)* | O(1) at existing limit, O(M) for new limit insertion |
+| `add_order`     | O(1) / O(log M) | O(1) at existing limit, O(log M) for new price level |
 | `cancel_order`  | O(1) | Hash lookup + intrusive list removal |
 | `modify_order`  | O(1) | Hash lookup + quantity update |
 | `get_best_bid`  | O(1) | Cached pointer |
 | `get_best_ask`  | O(1) | Cached pointer |
 | `get_snapshot`  | O(D) | D = depth requested |
-
-*M = number of price levels (for linked list insertion to maintain sorted order)
 
 ---
 

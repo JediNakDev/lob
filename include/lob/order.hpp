@@ -6,31 +6,18 @@
 
 namespace lob {
 
-// Forward declaration for parent pointer
 class PriceLevel;
 
-/**
- * Order struct following the article's design:
- * - Intrusive doubly-linked list pointers for O(1) removal
- * - Parent pointer to PriceLevel for O(1) quantity updates
- * - All fields packed for cache efficiency
- */
 struct Order {
-    // Core order data (hot path - keep together for cache locality)
     OrderId id;
     Price price;
     Quantity quantity;
     Quantity remaining_quantity;
     Side side;
     
-    // Intrusive doubly-linked list pointers for O(1) cancel
     Order* prev_order;
     Order* next_order;
-    
-    // Parent pointer for O(1) price level access during cancel
     PriceLevel* parent_level;
-    
-    // Timestamp (cold path)
     Timestamp entry_time;
     
     Order(OrderId id_, Price price_, Quantity quantity_, Side side_) noexcept
