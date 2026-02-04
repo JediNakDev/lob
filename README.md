@@ -49,12 +49,25 @@ Implemented optimizations based on ["How to Build a Fast Limit Order Book"](http
 
 | Operation       | Complexity | Notes |
 |-----------------|------------|-------|
-| `add_order`     | O(1) / O(log M) | O(1) at existing limit, O(log M) for new price level |
+| `add_order` (passive) | O(1) / O(log M) | O(1) at existing limit, O(log M) for new price level |
+| `add_order` (aggressive) | O(F + L log M) | Includes matching; see below |
 | `cancel_order`  | O(1) | Hash lookup + intrusive list removal |
 | `modify_order`  | O(1) | Hash lookup + quantity update |
 | `get_best_bid`  | O(1) | Cached pointer |
 | `get_best_ask`  | O(1) | Cached pointer |
 | `get_snapshot`  | O(D) | D = depth requested |
+
+**Matching complexity: O(F + L log M)**
+- **F** = number of fills (resting orders matched)
+- **L** = number of price levels fully exhausted (L ≤ F)
+- **M** = total price levels on the opposing side
+
+| Scenario | Complexity | Example |
+|----------|------------|---------|
+| Passive (no cross) | O(1) | Bid below best ask |
+| Single partial fill | O(1) | Match one order, level remains |
+| Single level exhausted | O(log M) | Clear one price level |
+| Multi-level sweep | O(F + L log M) | Large aggressive order |
 
 ---
 
