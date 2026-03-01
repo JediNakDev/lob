@@ -14,6 +14,7 @@ endif
 
 # Benchmark-specific flags for maximum performance
 BENCH_CXXFLAGS := -std=c++17 -O3 -march=native -mtune=native -flto \
+                  -DLOB_DETERMINISTIC_POOL \
                   -fno-omit-frame-pointer -Wall -Wextra -I include -I . -I benchmark $(BENCH_INCLUDES)
 
 SRC_DIR   := src

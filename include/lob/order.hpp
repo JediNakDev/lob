@@ -2,7 +2,9 @@
 #define LOB_ORDER_HPP
 
 #include "types.hpp"
+#ifdef LOB_ENABLE_ENTRY_TIME
 #include <chrono>
+#endif
 
 namespace lob {
 
@@ -19,6 +21,16 @@ struct Order {
     Order* next_order;
     PriceLevel* parent_level;
     Timestamp entry_time;
+
+    static Timestamp now_timestamp() noexcept {
+#ifdef LOB_ENABLE_ENTRY_TIME
+        return static_cast<Timestamp>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+#else
+        return 0;
+#endif
+    }
     
     Order(OrderId id_, Price price_, Quantity quantity_, Side side_) noexcept
         : id(id_)
@@ -29,9 +41,7 @@ struct Order {
         , prev_order(nullptr)
         , next_order(nullptr)
         , parent_level(nullptr)
-        , entry_time(static_cast<Timestamp>(
-              std::chrono::duration_cast<std::chrono::nanoseconds>(
-                  std::chrono::steady_clock::now().time_since_epoch()).count()))
+        , entry_time(now_timestamp())
     {}
 
     [[nodiscard]] bool is_filled() const noexcept { 

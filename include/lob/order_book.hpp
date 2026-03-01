@@ -2,24 +2,25 @@
 #define LOB_ORDER_BOOK_HPP
 
 #include "price_level.hpp"
+#include "object_pool.hpp"
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 #include <optional>
-#include <memory>
 
 namespace lob {
 
 /**
- * OrderBook - Limit Order Book using BST for price levels.
+ * OrderBook - cache-friendly ladder-based order book.
  * 
  * Structure:
- * - Separate BST for buy and sell sides (buy_tree_, sell_tree_)
- * - Hash maps for O(1) lookup by price and order ID
+ * - Tick-indexed ladders for buy and sell levels
+ * - Hash map for O(1) order lookup by order ID
  * - Cached pointers to best bid (highest_buy_) and best ask (lowest_sell_)
  * 
  * Performance:
  * - Add order (existing level): O(1)
- * - Add order (new level): O(log M) where M = number of price levels
+ * - Add order (new level): O(1) amortized
  * - Cancel order: O(1)
  * - Execute order: O(1)
  * - GetBestBid/Ask: O(1)
@@ -34,43 +35,46 @@ public:
     };
 
 private:
-    // Order storage - keyed by order ID for O(1) lookup
-    std::unordered_map<OrderId, std::unique_ptr<Order>> orders_;
-    
-    // Price level storage - keyed by price for O(1) lookup
-    std::unordered_map<Price, std::unique_ptr<PriceLevel>> bid_levels_;
-    std::unordered_map<Price, std::unique_ptr<PriceLevel>> ask_levels_;
-    
-    // BST roots for sorted price levels
-    PriceLevel* buy_tree_;      // Root of buy-side BST
-    PriceLevel* sell_tree_;     // Root of sell-side BST
+    // Order storage - keyed by order ID for O(1) lookup.
+    std::unordered_map<OrderId, Order*> orders_;
+
+    // Tick-indexed ladders (cache-friendly contiguous structures).
+    std::vector<PriceLevel*> bid_ladder_;
+    std::vector<PriceLevel*> ask_ladder_;
+    std::vector<std::uint64_t> bid_active_words_;
+    std::vector<std::uint64_t> ask_active_words_;
+    Price min_price_;
+    Price max_price_;
+    bool ladder_initialized_;
     
     // Cached best prices for O(1) access
     PriceLevel* highest_buy_;   // Best bid (max price in buy tree)
     PriceLevel* lowest_sell_;   // Best ask (min price in sell tree)
-    
+
+    ObjectPool<Order> order_pool_;
+    ObjectPool<PriceLevel> level_pool_;
+
     OrderId next_order_id_;
-    
-    // BST operations for bid side (sorted by price, higher = better)
-    void insert_bid_level(PriceLevel* level);
-    void remove_bid_level(PriceLevel* level);
-    
-    // BST operations for ask side (sorted by price, lower = better)
-    void insert_ask_level(PriceLevel* level);
-    void remove_ask_level(PriceLevel* level);
-    
-    // BST helpers
-    PriceLevel* find_min(PriceLevel* node) const;
-    PriceLevel* find_max(PriceLevel* node) const;
-    PriceLevel* find_successor(PriceLevel* node) const;
-    PriceLevel* find_predecessor(PriceLevel* node) const;
-    void transplant_bid(PriceLevel* u, PriceLevel* v);
-    void transplant_ask(PriceLevel* u, PriceLevel* v);
-    
+
+    void refresh_best_levels() noexcept;
+    void initialize_ladders(Price min_price, Price max_price);
+    void ensure_price_range(Price price);
+    [[nodiscard]] std::size_t ladder_index(Price price) const noexcept;
+    void set_active(std::vector<std::uint64_t>& words, std::size_t idx) noexcept;
+    void clear_active(std::vector<std::uint64_t>& words, std::size_t idx) noexcept;
+    [[nodiscard]] std::size_t word_count() const noexcept;
+    [[nodiscard]] std::optional<std::size_t> find_prev_active(
+        const std::vector<std::uint64_t>& words,
+        std::size_t from_idx) const noexcept;
+    [[nodiscard]] std::optional<std::size_t> find_next_active(
+        const std::vector<std::uint64_t>& words,
+        std::size_t from_idx) const noexcept;
+
     // Order book operations
     std::vector<Fill> match_order(Order* incoming);
     void add_order_to_book(Order* order);
     void remove_order_from_book(Order* order);
+    void clear();
 
 public:
     OrderBook();
@@ -78,8 +82,8 @@ public:
     
     OrderBook(const OrderBook&) = delete;
     OrderBook& operator=(const OrderBook&) = delete;
-    OrderBook(OrderBook&&) = default;
-    OrderBook& operator=(OrderBook&&) = default;
+    OrderBook(OrderBook&&) = delete;
+    OrderBook& operator=(OrderBook&&) = delete;
 
     [[nodiscard]] AddResult add_order(Price price, Quantity quantity, Side side);
     [[nodiscard]] bool cancel_order(OrderId order_id);
@@ -93,8 +97,8 @@ public:
     [[nodiscard]] Quantity get_bid_quantity_at_top() const;
     [[nodiscard]] Quantity get_ask_quantity_at_top() const;
 
-    [[nodiscard]] size_t get_bid_levels() const noexcept { return bid_levels_.size(); }
-    [[nodiscard]] size_t get_ask_levels() const noexcept { return ask_levels_.size(); }
+    [[nodiscard]] size_t get_bid_levels() const noexcept;
+    [[nodiscard]] size_t get_ask_levels() const noexcept;
     [[nodiscard]] size_t get_total_orders() const noexcept { return orders_.size(); }
 
     struct BookSnapshot {

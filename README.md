@@ -11,6 +11,61 @@ make benchmark  # Build benchmark suite
 make clean  # Clean build artifacts
 ```
 
+## Iteration 1.2.0 (Latest)
+
+### Key Changes
+
+- **Tick-indexed ladders**: Contiguous arrays replace `std::map` + `std::unordered_map` for price levels. Active levels tracked via bitset with `__builtin_ctzll`/`__builtin_clzll` scanning.
+- **Object pool with growth control**: Pre-allocated pools for `Order` and `PriceLevel`. Deterministic mode (`-DLOB_DETERMINISTIC_POOL`) prevents runtime heap allocation.
+- **Sharded engine**: SPSC queue per shard, strict single-producer ownership, batched consumer processing, thread pinning.
+
+### Performance Summary
+
+**AddOrder 28 ns | MatchOrder 46 ns | MixedWorkload 22.8 Mops/s**
+
+| Benchmark | Mean | Throughput | vs 1.1.0 |
+|-----------|------|------------|----------|
+| AddOrder | 28 ns | 35.0 Mops/s | **1.9x faster** (was 54 ns) |
+| MatchOrder | 46 ns | 22.0 Mops/s | **2.6x faster** (was 118 ns) |
+| MixedWorkload | 28 ns | 21.2 Mops/s | **1.6x faster** (was 46 ns) |
+| CancelOrder | 15 ns | 65.3 Mops/s | comparable |
+| ModifyOrder | 16 ns | 61.3 Mops/s | comparable |
+
+### Tail Latency vs 1.1.0
+
+| Operation | P99 | P99.99 | vs 1.1.0 |
+|-----------|-----|--------|----------|
+| AddOrder | 42 ns | 1.6 us | P99.99 **7x better** (was 11 us) |
+| MatchOrder | 84 ns | 333 ns | P99.99 **1.9x better** (was 625 ns) |
+| MixedWorkload | 125 ns | 3.5 us | P99 **2.7x better** (was 333 ns) |
+
+### Sharded Throughput (Synthetic Add Flow)
+
+Each row shows `shards / consumer batch size`. Producer submits 100k orders; workers process in parallel.
+
+| Shards / Batch | Throughput |
+|----------------|------------|
+| 1 / 64 | 9.69 Mops/s |
+| 2 / 64 | 9.40 Mops/s |
+| 4 / 64 | 10.55 Mops/s |
+| 8 / 64 | 8.69 Mops/s |
+| 1 / 256 | 9.61 Mops/s |
+| 2 / 256 | **13.40 Mops/s** |
+| 4 / 256 | 10.60 Mops/s |
+| 8 / 256 | 8.74 Mops/s |
+
+### Sharded End-to-End Latency
+
+Submit-to-completion latency per order, including queue transit and matching.
+
+| Shards / Batch | Mean | P95 | P99 | P99.9 |
+|----------------|------|-----|-----|-------|
+| 1 / 256 | 348 ns | 417 ns | 875 ns | 14.1 us |
+| 2 / 256 | 529 ns | 958 ns | 3.7 us | 9.1 us |
+| 4 / 256 | 1.6 us | 2.3 us | 13.8 us | 35.3 us |
+
+See `results/benchmark_result_1.2.0.csv` for full data.
+
 ## Iteration 1.1.0
 
 Implemented optimizations based on ["How to Build a Fast Limit Order Book"](https://web.archive.org/web/20110219163448/http://howtohft.wordpress.com/2011/02/15/how-to-build-a-fast-limit-order-book/) article.

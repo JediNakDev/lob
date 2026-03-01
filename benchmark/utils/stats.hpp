@@ -12,6 +12,7 @@ namespace bench {
 struct Stats {
     double mean = 0;
     double p50 = 0;
+    double p95 = 0;
     double p99 = 0;
     double p999 = 0;
     double p9999 = 0;
@@ -30,6 +31,7 @@ struct Stats {
 
         s.mean = std::accumulate(samples.begin(), samples.end(), 0.0) / s.count;
         s.p50 = samples[s.count / 2];
+        s.p95 = samples[std::min(static_cast<size_t>(s.count * 0.95), s.count - 1)];
         s.p99 = samples[std::min(static_cast<size_t>(s.count * 0.99), s.count - 1)];
         s.p999 = samples[std::min(static_cast<size_t>(s.count * 0.999), s.count - 1)];
         s.p9999 = samples[std::min(static_cast<size_t>(s.count * 0.9999), s.count - 1)];
@@ -52,6 +54,7 @@ struct Stats {
     void report(benchmark::State& state) const {
         state.counters["Mean_ns"] = mean;
         state.counters["P50_ns"] = p50;
+        state.counters["P95_ns"] = p95;
         state.counters["P99_ns"] = p99;
         state.counters["P99.9_ns"] = p999;
         state.counters["P99.99_ns"] = p9999;

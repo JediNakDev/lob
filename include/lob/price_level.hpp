@@ -2,6 +2,7 @@
 #define LOB_PRICE_LEVEL_HPP
 
 #include "order.hpp"
+#include <cstddef>
 
 namespace lob {
 
@@ -9,13 +10,13 @@ namespace lob {
  * PriceLevel (Limit) - represents a single limit price in the order book.
  * 
  * Structure:
- * - Binary tree node (parent/leftChild/rightChild) for O(log M) level insertion
+ * - Compact aggregate fields (price/volume/count)
  * - Doubly linked list of orders (headOrder/tailOrder) for O(1) order operations
- * - Hash map lookup by price gives O(1) access to existing levels
+ * - Indexed by tick ladder in OrderBook for cache-friendly lookup
  * 
  * Performance:
  * - Add order to existing level: O(1)
- * - Add first order at new level: O(log M) where M = number of price levels
+ * - Add first order at new level: O(1) amortized with ladder expansion
  * - Cancel order: O(1)
  * - Execute order: O(1)
  * - GetVolumeAtLimit: O(1)
@@ -27,11 +28,6 @@ public:
     Quantity total_volume;      // Total quantity at this price level
     size_t order_count_;        // Number of orders at this level
 
-    // Binary tree pointers for sorted price levels
-    PriceLevel* parent;
-    PriceLevel* left_child;     // Lower prices
-    PriceLevel* right_child;    // Higher prices
-
     // Doubly linked list of orders at this price
     Order* head_order;
     Order* tail_order;
@@ -40,9 +36,6 @@ public:
         : price(price_)
         , total_volume(0)
         , order_count_(0)
-        , parent(nullptr)
-        , left_child(nullptr)
-        , right_child(nullptr)
         , head_order(nullptr)
         , tail_order(nullptr)
     {}
@@ -123,15 +116,6 @@ public:
         total_volume = (new_qty < 0) ? 0 : static_cast<Quantity>(new_qty);
     }
 
-    // BST helper: check if this is a left child
-    [[nodiscard]] bool is_left_child() const noexcept {
-        return parent && parent->left_child == this;
-    }
-
-    // BST helper: check if this is a right child
-    [[nodiscard]] bool is_right_child() const noexcept {
-        return parent && parent->right_child == this;
-    }
 };
 
 }
