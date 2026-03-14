@@ -102,3 +102,29 @@ debug: clean $(TARGET)
 # Debug build for benchmark (with symbols but optimized)
 benchmark-debug: BENCH_CXXFLAGS := -std=c++17 -O2 -g -Wall -Wextra -I include -I . $(BENCH_INCLUDES)
 benchmark-debug: clean $(BENCH_TARGET)
+
+# ============================================================================
+# Profile-Guided Optimization (PGO) Targets
+# ============================================================================
+# Step 1: Build with instrumentation to collect profiling data
+benchmark-pgo-generate: BENCH_CXXFLAGS := -std=c++17 -O3 -march=native -mtune=native -flto \
+                         -fprofile-generate=$(BUILD_DIR)/pgo-data \
+                         -DLOB_DETERMINISTIC_POOL \
+                         -fno-omit-frame-pointer -Wall -Wextra -I include -I . -I benchmark $(BENCH_INCLUDES)
+benchmark-pgo-generate: clean $(BENCH_TARGET)
+	@echo "Running instrumented benchmark to collect profile data..."
+	./$(BENCH_TARGET) --benchmark_min_time=1
+	@echo "Profile data written to $(BUILD_DIR)/pgo-data"
+
+# Step 2: Build optimized binary using collected profile data
+benchmark-pgo-use: BENCH_CXXFLAGS := -std=c++17 -O3 -march=native -mtune=native -flto \
+                   -fprofile-use=$(BUILD_DIR)/pgo-data \
+                   -fprofile-correction \
+                   -DLOB_DETERMINISTIC_POOL \
+                   -fno-omit-frame-pointer -Wall -Wextra -I include -I . -I benchmark $(BENCH_INCLUDES)
+benchmark-pgo-use: $(BENCH_TARGET)
+	@echo "PGO-optimized benchmark built: $(BENCH_TARGET)"
+
+# Convenience: run both PGO steps end-to-end, then run the final binary
+benchmark-pgo: benchmark-pgo-generate benchmark-pgo-use benchmark-run
+	@echo "PGO build and run complete."

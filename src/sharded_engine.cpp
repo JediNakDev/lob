@@ -11,7 +11,9 @@ namespace lob::engine {
 namespace {
 
 std::uint64_t current_thread_token() {
-    return static_cast<std::uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    static thread_local const std::uint64_t token =
+        static_cast<std::uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    return token;
 }
 
 }  // namespace
@@ -90,8 +92,19 @@ void ShardedEngine::stop() {
 }
 
 void ShardedEngine::flush() noexcept {
+    std::uint32_t spin = 1;
     while (inflight_.load(std::memory_order_acquire) != 0) {
-        std::this_thread::yield();
+        for (std::uint32_t i = 0; i < spin; ++i) {
+#if defined(__x86_64__) || defined(__i386__)
+            __builtin_ia32_pause();
+#endif
+        }
+        if (spin < 128) {
+            spin <<= 1;
+        } else {
+            std::this_thread::yield();
+            spin = 1;
+        }
     }
 }
 
@@ -148,6 +161,12 @@ void ShardedEngine::worker_loop(std::size_t shard_idx) {
         }
 
         if (batch.empty()) {
+            // Spin briefly before yielding to reduce latency on burst arrivals.
+            for (int spin = 0; spin < 32; ++spin) {
+#if defined(__x86_64__) || defined(__i386__)
+                __builtin_ia32_pause();
+#endif
+            }
             std::this_thread::yield();
             continue;
         }

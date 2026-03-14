@@ -94,12 +94,14 @@ void OrderBook::ensure_price_range(Price price) {
     const std::size_t words = (new_size + 63) / 64;
     bid_active_words_.assign(words, 0);
     ask_active_words_.assign(words, 0);
-    for (std::size_t i = 0; i < new_size; ++i) {
-        if (bid_ladder_[i]) {
-            set_active(bid_active_words_, i);
+    // Only scan the range where old data was placed: [shift, shift + old_size).
+    for (std::size_t i = 0; i < old_size; ++i) {
+        const std::size_t new_i = i + shift;
+        if (bid_ladder_[new_i]) {
+            set_active(bid_active_words_, new_i);
         }
-        if (ask_ladder_[i]) {
-            set_active(ask_active_words_, i);
+        if (ask_ladder_[new_i]) {
+            set_active(ask_active_words_, new_i);
         }
     }
 #endif
@@ -179,7 +181,9 @@ void OrderBook::refresh_best_levels() noexcept {
     highest_buy_ = nullptr;
     lowest_sell_ = nullptr;
 
-    for (std::size_t w = word_count(); w > 0; --w) {
+    const std::size_t wc = word_count();
+
+    for (std::size_t w = wc; w > 0; --w) {
         const std::uint64_t bits = bid_active_words_[w - 1];
         if (bits == 0) {
             continue;
@@ -192,7 +196,7 @@ void OrderBook::refresh_best_levels() noexcept {
         break;
     }
 
-    for (std::size_t w = 0; w < word_count(); ++w) {
+    for (std::size_t w = 0; w < wc; ++w) {
         const std::uint64_t bits = ask_active_words_[w];
         if (bits == 0) {
             continue;
@@ -478,29 +482,34 @@ OrderBook::BookSnapshot OrderBook::get_snapshot(size_t depth) const {
 
     if (highest_buy_) {
         std::size_t idx = ladder_index(highest_buy_->price);
-        while (true) {
+        while (snapshot.bids.size() < depth) {
             PriceLevel* level = bid_ladder_[idx];
             if (level) {
                 snapshot.bids.push_back({level->price, level->total_volume, level->order_count()});
-                if (snapshot.bids.size() >= depth) {
-                    break;
-                }
             }
             if (idx == 0) {
                 break;
             }
-            --idx;
+            const auto prev = find_prev_active(bid_active_words_, idx - 1);
+            if (!prev) {
+                break;
+            }
+            idx = *prev;
         }
     }
 
     if (lowest_sell_) {
-        for (std::size_t idx = ladder_index(lowest_sell_->price);
-             idx < ask_ladder_.size() && snapshot.asks.size() < depth;
-             ++idx) {
+        std::size_t idx = ladder_index(lowest_sell_->price);
+        while (snapshot.asks.size() < depth) {
             PriceLevel* level = ask_ladder_[idx];
             if (level) {
                 snapshot.asks.push_back({level->price, level->total_volume, level->order_count()});
             }
+            const auto next = find_next_active(ask_active_words_, idx + 1);
+            if (!next) {
+                break;
+            }
+            idx = *next;
         }
     }
 
