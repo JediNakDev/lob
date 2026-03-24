@@ -11,7 +11,50 @@ make benchmark  # Build benchmark suite
 make clean  # Clean build artifacts
 ```
 
-## Iteration 1.2.0 (Latest)
+## Iteration 1.3.0 (Latest)
+
+### Key Changes
+
+- **Zero heap allocations on the hot path**: All `Order` and `PriceLevel` objects served from pre-allocated object pools. Fill buffer reused across `match_order` calls — no `std::vector<Fill>` allocation per match. Deterministic mode (`-DLOB_DETERMINISTIC_POOL`) enforces zero-allocation at compile time.
+- **Templatized matching on Side**: `match_order`, `add_order_to_book`, and `remove_order_from_book` are `template<Side S>` — the compiler generates separate BUY/SELL code paths, eliminating runtime branch in the inner matching loop.
+- **Branch hints**: `LOB_LIKELY`/`LOB_UNLIKELY` annotations on all hot-path branches (pool allocation, price range checks, matching loop predicates).
+- **Order struct layout**: `Side` narrowed to `uint8_t`, fields reordered for zero internal padding. Hot fields (id, price, quantity, pointers) packed into first 48 bytes (single cache line).
+- **ITCH 5.0 parser**: Zero-copy binary protocol parser for Add Order (A/F), Order Executed (E), Order Cancel (X), Order Delete (D), and Order Replace (U) messages.
+- **Realistic workload benchmark**: 93% cancel, 5% add, 2% modify — matching real exchange traffic patterns where the vast majority of orders are cancelled before execution.
+- **Cycle counter**: Cross-platform `rdtsc` (x86) / `CNTVCT_EL0` (ARM64) cycle timer for sub-nanosecond measurement resolution.
+
+### Architecture
+
+- Each shard runs on a **dedicated pinned CPU core** (`pthread_setaffinity_np` on Linux, `thread_policy_set` on macOS), eliminating context-switch jitter and core migration.
+- Single-threaded per shard — no locks, no atomics on the hot path.
+- SPSC queues between producer and consumer threads.
+
+### Performance Summary
+
+**AddOrder 26 ns | MatchOrder 47 ns | CancelHeavy 27 Mops/s**
+
+| Benchmark | Mean | Throughput | vs 1.2.0 |
+|-----------|------|------------|----------|
+| AddOrder | 26 ns | 38.9 Mops/s | **1.1x faster** (was 29 ns) |
+| MatchOrder | 47 ns | 21.4 Mops/s | comparable |
+| CancelOrder | 16 ns | 63.6 Mops/s | comparable |
+| MixedWorkload | 27 ns | 21.6 Mops/s | comparable |
+| CancelHeavyWorkload | 19 ns | 27.0 Mops/s | **NEW** |
+
+### Tail Latency
+
+| Operation | P99 | P99.9 | P99.99 | vs 1.2.0 |
+|-----------|-----|-------|--------|----------|
+| AddOrder | 42 ns | 250 ns | 1.8 us | P99.9 **4x better** (was 1 us) |
+| MatchOrder | 84 ns | 167 ns | 250 ns | P99.99 **1.3x better** (was 333 ns) |
+| CancelHeavyWorkload | 83 ns | 666 ns | 833 ns | **NEW** |
+| MixedWorkload | 167 ns | 250 ns | 500 ns | P99.99 **7x better** (was 3.5 us) |
+
+See `results/benchmark_result_1.3.0.csv` for full data.
+
+---
+
+## Iteration 1.2.0
 
 ### Key Changes
 

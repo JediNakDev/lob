@@ -1,6 +1,7 @@
 #ifndef LOB_OBJECT_POOL_HPP
 #define LOB_OBJECT_POOL_HPP
 
+#include "compiler.hpp"
 #include <cstddef>
 #include <memory>
 #include <type_traits>
@@ -41,8 +42,8 @@ public:
 
     template <typename... Args>
     T* create(Args&&... args) {
-        if (!free_list_) {
-            if (!allow_growth_) {
+        if (LOB_UNLIKELY(!free_list_)) {
+            if (LOB_UNLIKELY(!allow_growth_)) {
                 ++growth_failures_;
                 return nullptr;
             }

@@ -15,12 +15,11 @@ struct Order {
     Price price;
     Quantity quantity;
     Quantity remaining_quantity;
-    Side side;
-    
     Order* prev_order;
     Order* next_order;
     PriceLevel* parent_level;
     Timestamp entry_time;
+    Side side;
 
     static Timestamp now_timestamp() noexcept {
 #ifdef LOB_ENABLE_ENTRY_TIME
@@ -37,11 +36,11 @@ struct Order {
         , price(price_)
         , quantity(quantity_)
         , remaining_quantity(quantity_)
-        , side(side_)
         , prev_order(nullptr)
         , next_order(nullptr)
         , parent_level(nullptr)
         , entry_time(now_timestamp())
+        , side(side_)
     {}
 
     [[nodiscard]] bool is_filled() const noexcept { 
@@ -52,6 +51,8 @@ struct Order {
         remaining_quantity = (qty >= remaining_quantity) ? 0 : remaining_quantity - qty;
     }
 };
+
+static_assert(sizeof(Order) <= 72, "Order struct exceeds 72 bytes — review field layout");
 
 }
 

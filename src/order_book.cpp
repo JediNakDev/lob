@@ -1,4 +1,5 @@
 #include <lob/order_book.hpp>
+#include <lob/compiler.hpp>
 #include <algorithm>
 
 namespace lob {
@@ -30,6 +31,7 @@ OrderBook::OrderBook()
 
     order_pool_.reserve(kInitialOrderPoolObjects);
     level_pool_.reserve(kInitialLevelPoolObjects);
+    fill_buffer_.reserve(16);
 
 #ifdef LOB_DETERMINISTIC_POOL
     order_pool_.set_allow_growth(false);
@@ -60,11 +62,11 @@ void OrderBook::initialize_ladders(Price min_price, Price max_price) {
 }
 
 void OrderBook::ensure_price_range(Price price) {
-    if (!ladder_initialized_) {
+    if (LOB_UNLIKELY(!ladder_initialized_)) {
         initialize_ladders(price, price);
         return;
     }
-    if (price >= min_price_ && price <= max_price_) {
+    if (LOB_LIKELY(price >= min_price_ && price <= max_price_)) {
         return;
     }
 
@@ -206,43 +208,36 @@ void OrderBook::refresh_best_levels() noexcept {
     }
 }
 
-void OrderBook::add_order_to_book(Order* order) {
+template<Side S>
+void OrderBook::add_order_to_book_impl(Order* order) {
     ensure_price_range(order->price);
     if (order->price < min_price_ || order->price > max_price_) {
         return;
     }
 
     const std::size_t idx = ladder_index(order->price);
-    if (order->side == Side::BUY) {
-        PriceLevel*& level = bid_ladder_[idx];
-        if (!level) {
-            level = level_pool_.create(order->price);
-            if (!level) {
-                return;
-            }
-            set_active(bid_active_words_, idx);
-            if (!highest_buy_ || level->price > highest_buy_->price) {
-                highest_buy_ = level;
-            }
+    auto& ladder = (S == Side::BUY) ? bid_ladder_ : ask_ladder_;
+    auto& active = (S == Side::BUY) ? bid_active_words_ : ask_active_words_;
+    auto*& best  = (S == Side::BUY) ? highest_buy_ : lowest_sell_;
+
+    PriceLevel*& level = ladder[idx];
+    if (LOB_UNLIKELY(!level)) {
+        level = level_pool_.create(order->price);
+        if (LOB_UNLIKELY(!level)) {
+            return;
         }
-        level->add_order(order);
-    } else {
-        PriceLevel*& level = ask_ladder_[idx];
-        if (!level) {
-            level = level_pool_.create(order->price);
-            if (!level) {
-                return;
-            }
-            set_active(ask_active_words_, idx);
-            if (!lowest_sell_ || level->price < lowest_sell_->price) {
-                lowest_sell_ = level;
-            }
+        set_active(active, idx);
+        if constexpr (S == Side::BUY) {
+            if (!best || level->price > best->price) best = level;
+        } else {
+            if (!best || level->price < best->price) best = level;
         }
-        level->add_order(order);
     }
+    level->add_order(order);
 }
 
-void OrderBook::remove_order_from_book(Order* order) {
+template<Side S>
+void OrderBook::remove_order_from_book_impl(Order* order) {
     PriceLevel* level = order->parent_level;
     if (!level) {
         return;
@@ -254,9 +249,13 @@ void OrderBook::remove_order_from_book(Order* order) {
     }
 
     const std::size_t idx = ladder_index(level->price);
-    if (order->side == Side::BUY) {
-        bid_ladder_[idx] = nullptr;
-        clear_active(bid_active_words_, idx);
+    auto& ladder = (S == Side::BUY) ? bid_ladder_ : ask_ladder_;
+    auto& active = (S == Side::BUY) ? bid_active_words_ : ask_active_words_;
+
+    ladder[idx] = nullptr;
+    clear_active(active, idx);
+
+    if constexpr (S == Side::BUY) {
         if (level == highest_buy_) {
             if (idx == 0) {
                 highest_buy_ = nullptr;
@@ -266,8 +265,6 @@ void OrderBook::remove_order_from_book(Order* order) {
             }
         }
     } else {
-        ask_ladder_[idx] = nullptr;
-        clear_active(ask_active_words_, idx);
         if (level == lowest_sell_) {
             const auto next = find_next_active(ask_active_words_, idx + 1);
             lowest_sell_ = next ? ask_ladder_[*next] : nullptr;
@@ -276,72 +273,56 @@ void OrderBook::remove_order_from_book(Order* order) {
     level_pool_.destroy(level);
 }
 
-std::vector<Fill> OrderBook::match_order(Order* incoming) {
-    std::vector<Fill> fills;
-    fills.reserve(4);
+template<Side S>
+void OrderBook::match_order_impl(Order* incoming) {
+    auto& fills = fill_buffer_;
 
-    if (incoming->side == Side::BUY) {
-        while (!incoming->is_filled() && lowest_sell_) {
-            PriceLevel* ask_level = lowest_sell_;
-            if (incoming->price < ask_level->price) {
-                break;
+    while (!incoming->is_filled()) {
+        PriceLevel*& best = (S == Side::BUY) ? lowest_sell_ : highest_buy_;
+        if (!best) break;
+
+        PriceLevel* contra_level = best;
+
+        if constexpr (S == Side::BUY) {
+            if (LOB_UNLIKELY(incoming->price < contra_level->price)) break;
+        } else {
+            if (LOB_UNLIKELY(incoming->price > contra_level->price)) break;
+        }
+
+        while (!incoming->is_filled() && !contra_level->is_empty()) {
+            Order* resting = contra_level->front();
+            const Quantity fill_qty = std::min(incoming->remaining_quantity, resting->remaining_quantity);
+
+            if constexpr (S == Side::BUY) {
+                fills.push_back(Fill{incoming->id, resting->id, contra_level->price, fill_qty});
+            } else {
+                fills.push_back(Fill{resting->id, incoming->id, contra_level->price, fill_qty});
             }
+            incoming->fill(fill_qty);
+            resting->fill(fill_qty);
+            contra_level->update_quantity(-static_cast<int64_t>(fill_qty));
 
-            while (!incoming->is_filled() && !ask_level->is_empty()) {
-                Order* resting = ask_level->front();
-                const Quantity fill_qty = std::min(incoming->remaining_quantity, resting->remaining_quantity);
-
-                fills.push_back(Fill{incoming->id, resting->id, ask_level->price, fill_qty});
-                incoming->fill(fill_qty);
-                resting->fill(fill_qty);
-                ask_level->update_quantity(-static_cast<int64_t>(fill_qty));
-
-                if (resting->is_filled()) {
-                    const OrderId resting_id = resting->id;
-                    ask_level->pop_front();
-                    orders_.erase(resting_id);
-                    order_pool_.destroy(resting);
-                }
-            }
-
-            if (ask_level->is_empty()) {
-                const std::size_t idx = ladder_index(ask_level->price);
-                ask_ladder_[idx] = nullptr;
-                clear_active(ask_active_words_, idx);
-                level_pool_.destroy(ask_level);
-                const auto next = find_next_active(ask_active_words_, idx + 1);
-                lowest_sell_ = next ? ask_ladder_[*next] : nullptr;
+            if (LOB_LIKELY(resting->is_filled())) {
+                const OrderId resting_id = resting->id;
+                contra_level->pop_front();
+                orders_.erase(resting_id);
+                order_pool_.destroy(resting);
             }
         }
-    } else {
-        while (!incoming->is_filled() && highest_buy_) {
-            PriceLevel* bid_level = highest_buy_;
-            if (incoming->price > bid_level->price) {
-                break;
-            }
 
-            while (!incoming->is_filled() && !bid_level->is_empty()) {
-                Order* resting = bid_level->front();
-                const Quantity fill_qty = std::min(incoming->remaining_quantity, resting->remaining_quantity);
+        if (LOB_LIKELY(contra_level->is_empty())) {
+            const std::size_t idx = ladder_index(contra_level->price);
+            auto& ladder = (S == Side::BUY) ? ask_ladder_ : bid_ladder_;
+            auto& active = (S == Side::BUY) ? ask_active_words_ : bid_active_words_;
 
-                fills.push_back(Fill{resting->id, incoming->id, bid_level->price, fill_qty});
-                incoming->fill(fill_qty);
-                resting->fill(fill_qty);
-                bid_level->update_quantity(-static_cast<int64_t>(fill_qty));
+            ladder[idx] = nullptr;
+            clear_active(active, idx);
+            level_pool_.destroy(contra_level);
 
-                if (resting->is_filled()) {
-                    const OrderId resting_id = resting->id;
-                    bid_level->pop_front();
-                    orders_.erase(resting_id);
-                    order_pool_.destroy(resting);
-                }
-            }
-
-            if (bid_level->is_empty()) {
-                const std::size_t idx = ladder_index(bid_level->price);
-                bid_ladder_[idx] = nullptr;
-                clear_active(bid_active_words_, idx);
-                level_pool_.destroy(bid_level);
+            if constexpr (S == Side::BUY) {
+                const auto next = find_next_active(ask_active_words_, idx + 1);
+                lowest_sell_ = next ? ask_ladder_[*next] : nullptr;
+            } else {
                 if (idx == 0) {
                     highest_buy_ = nullptr;
                 } else {
@@ -351,42 +332,61 @@ std::vector<Fill> OrderBook::match_order(Order* incoming) {
             }
         }
     }
-
-    return fills;
 }
+
+// Explicit template instantiations
+template void OrderBook::match_order_impl<Side::BUY>(Order*);
+template void OrderBook::match_order_impl<Side::SELL>(Order*);
+template void OrderBook::add_order_to_book_impl<Side::BUY>(Order*);
+template void OrderBook::add_order_to_book_impl<Side::SELL>(Order*);
+template void OrderBook::remove_order_from_book_impl<Side::BUY>(Order*);
+template void OrderBook::remove_order_from_book_impl<Side::SELL>(Order*);
 
 OrderBook::AddResult OrderBook::add_order(Price price, Quantity quantity, Side side) {
     ensure_price_range(price);
-    if (price < min_price_ || price > max_price_) {
+    if (LOB_UNLIKELY(price < min_price_ || price > max_price_)) {
         return AddResult{0, {}, 0};
     }
 
     const OrderId order_id = next_order_id_++;
     Order* order_ptr = order_pool_.create(order_id, price, quantity, side);
-    if (!order_ptr) {
+    if (LOB_UNLIKELY(!order_ptr)) {
         return AddResult{0, {}, 0};
     }
 
-    std::vector<Fill> fills = match_order(order_ptr);
+    fill_buffer_.clear();
+    if (side == Side::BUY) {
+        match_order_impl<Side::BUY>(order_ptr);
+    } else {
+        match_order_impl<Side::SELL>(order_ptr);
+    }
     const Quantity remaining = order_ptr->remaining_quantity;
     if (!order_ptr->is_filled()) {
         orders_[order_ptr->id] = order_ptr;
-        add_order_to_book(order_ptr);
+        if (side == Side::BUY) {
+            add_order_to_book_impl<Side::BUY>(order_ptr);
+        } else {
+            add_order_to_book_impl<Side::SELL>(order_ptr);
+        }
     } else {
         order_pool_.destroy(order_ptr);
     }
 
-    return AddResult{order_id, std::move(fills), remaining};
+    return AddResult{order_id, std::move(fill_buffer_), remaining};
 }
 
 bool OrderBook::cancel_order(OrderId order_id) {
     auto it = orders_.find(order_id);
-    if (it == orders_.end()) {
+    if (LOB_UNLIKELY(it == orders_.end())) {
         return false;
     }
 
     Order* order = it->second;
-    remove_order_from_book(order);
+    if (order->side == Side::BUY) {
+        remove_order_from_book_impl<Side::BUY>(order);
+    } else {
+        remove_order_from_book_impl<Side::SELL>(order);
+    }
     orders_.erase(it);
     order_pool_.destroy(order);
     return true;
@@ -394,7 +394,7 @@ bool OrderBook::cancel_order(OrderId order_id) {
 
 bool OrderBook::modify_order(OrderId order_id, Quantity new_quantity) {
     auto it = orders_.find(order_id);
-    if (it == orders_.end()) {
+    if (LOB_UNLIKELY(it == orders_.end())) {
         return false;
     }
 

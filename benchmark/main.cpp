@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
     std::cout << "CPU: " << bench::CPUPinner::cpu_info() << "\n";
 
     int target_core = 0;
-    std::string csv_path = "results/benchmark_result_1.2.0.csv";
+    std::string csv_path = "results/benchmark_result_1.3.0.csv";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];

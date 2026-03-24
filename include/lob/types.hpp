@@ -5,7 +5,7 @@
 
 namespace lob {
 
-enum class Side { BUY, SELL };
+enum class Side : uint8_t { BUY, SELL };
 
 using OrderId = uint64_t;
 using Quantity = uint64_t;

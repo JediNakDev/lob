@@ -54,6 +54,8 @@ private:
     ObjectPool<Order> order_pool_;
     ObjectPool<PriceLevel> level_pool_;
 
+    std::vector<Fill> fill_buffer_;
+
     OrderId next_order_id_;
 
     void refresh_best_levels() noexcept;
@@ -70,10 +72,10 @@ private:
         const std::vector<std::uint64_t>& words,
         std::size_t from_idx) const noexcept;
 
-    // Order book operations
-    std::vector<Fill> match_order(Order* incoming);
-    void add_order_to_book(Order* order);
-    void remove_order_from_book(Order* order);
+    // Order book operations — templatized on Side to eliminate branches in inner loops
+    template<Side S> void match_order_impl(Order* incoming);
+    template<Side S> void add_order_to_book_impl(Order* order);
+    template<Side S> void remove_order_from_book_impl(Order* order);
     void clear();
 
 public:
