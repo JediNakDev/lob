@@ -1,6 +1,7 @@
 #include "../tests/order_tests.hpp"
 #include "../tests/matching_tests.hpp"
 #include "../tests/query_tests.hpp"
+#include "../tests/itch_replay_tests.hpp"
 #include <iostream>
 
 int main() {
@@ -11,6 +12,7 @@ int main() {
     run_order_tests();
     run_matching_tests();
     run_query_tests();
+    itch_replay_tests();
 
     std::cout << "═══════════════════════════════════════════════════════════════\n";
     std::cout << "                    ALL TESTS PASSED                           \n";

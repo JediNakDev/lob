@@ -5,13 +5,66 @@ A high-performance limit order book implementation in modern C++17.
 ## Building
 
 ```bash
-make        # Build the demo
-make test   # Run tests
-make benchmark  # Build benchmark suite
-make clean  # Clean build artifacts
+make             # Build the demo
+make test        # Run tests (includes ITCH replay validation)
+make benchmark   # Build benchmark suite
+make itch-replay # Build the ITCH 5.0 replay tool
+make clean       # Clean build artifacts
 ```
 
-## Iteration 1.3.0 (Latest)
+## ITCH 5.0 Replay & Validation
+
+The engine is driven end-to-end from a NASDAQ ITCH 5.0 message stream and
+validated against an independent reference book (`std::map` + `std::list`)
+on every message. See [tools/itch_replay/](tools/itch_replay/) for the
+driver, reference oracle, and synthetic stream generator.
+
+```bash
+make itch-replay
+./build/itch_replay --synth 1000000              # 1M synthetic msgs
+./build/itch_replay --synth 1000000 --validate   # diff vs reference book on every msg
+./build/itch_replay file.itch                    # real NASDAQ ITCH file
+./build/itch_replay file.itch50 --framed         # 2-byte BE length-prefixed dump
+```
+
+`make test` runs a 100,000-message synthetic ITCH stream through the
+engine and the reference book, diffing the top 10 levels of both books
+**after every single message**. Zero divergence is required to pass.
+
+| Run | Messages | Throughput | Validation |
+|-----|----------|------------|------------|
+| Replay, fresh book        | 1,000,000  | 3.48 M msgs/s | n/a |
+| Replay, growing to 14M live orders | 50,000,000 | 1.06 M msgs/s | n/a |
+| Replay with per-msg diff vs reference | 1,000,000  | 12.4 K msgs/s | 0 mismatches |
+
+See [benchmark/profiling/README.md](benchmark/profiling/README.md) for
+profiling artifacts (perf scripts for Linux, sample/xctrace for macOS)
+and the captured hot-path breakdown.
+
+
+
+## Iteration 1.4.0 (Latest)
+
+### Key Changes
+
+- **ITCH 5.0 replay driver**: Drives the production `OrderBook` end-to-end from a NASDAQ ITCH 5.0 message stream (A/F/E/X/D/U). Exchange-ref → internal-id mapping; supports both raw and length-prefixed (`.itch50`) framing.
+- **Reference book validator**: An independent `std::map<Price, std::list<Order>>` oracle. `make test` diffs the top 10 levels of both books **after every message** on a 100,000-msg synthetic stream — zero divergence required.
+- **Deterministic synthetic ITCH generator**: Wire-format A/F/E/X/D/U emitter with realistic mix; non-marketable by construction; preserves side across `U` replaces.
+- **Profiling infrastructure**: `benchmark/profiling/` ships Linux `perf` (stat + record + report) and macOS (`sample` + `xctrace`) scripts plus checked-in captures showing the real hot path during replay (`do_delete → cancel_order` dominant, `do_add → ensure_price_range` + `ObjectPool::allocate_block` secondary).
+
+### Replay Throughput (Apple M-series, macOS 26.2)
+
+| Workload | Throughput | Notes |
+|----------|------------|-------|
+| 1M synthetic ITCH msgs, fresh book      | 3.48 M msgs/s | 285K live orders end-state |
+| 50M synthetic ITCH msgs, growing book   | 1.06 M msgs/s | 14.3M live orders end-state — flat-hashmap rehash + cache pressure |
+| 1M msgs **with per-msg diff** vs reference | 12.4 K msgs/s | 0 mismatches across full run |
+
+See [benchmark/profiling/README.md](benchmark/profiling/README.md) for captured artifacts and methodology.
+
+---
+
+## Iteration 1.3.0
 
 ### Key Changes
 

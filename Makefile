@@ -33,7 +33,7 @@ BUILD_DIR := build
 TARGET    := $(BUILD_DIR)/run_tests
 BENCH_TARGET := $(BUILD_DIR)/benchmark
 
-.PHONY: all clean test benchmark benchmark-run benchmark-json
+.PHONY: all clean test benchmark benchmark-run benchmark-json itch-replay
 
 all: $(TARGET)
 
@@ -92,6 +92,15 @@ benchmark-filter: $(BENCH_TARGET)
 	else \
 		./$(BENCH_TARGET) --benchmark_filter=$(FILTER); \
 	fi
+
+ITCH_REPLAY_TARGET := $(BUILD_DIR)/itch_replay
+ITCH_REPLAY_FLAGS := -std=c++17 -O3 -march=native -flto -Wall -Wextra -I include -I .
+
+$(ITCH_REPLAY_TARGET): $(SRCS) tools/itch_replay/replay_main.cpp tools/itch_replay/itch_replayer.hpp tools/itch_replay/reference_book.hpp tools/itch_replay/synthetic.hpp tools/itch_replay/diff.hpp | $(BUILD_DIR)
+	$(CXX) $(ITCH_REPLAY_FLAGS) -o $@ $(SRCS) tools/itch_replay/replay_main.cpp
+
+itch-replay: $(ITCH_REPLAY_TARGET)
+	@echo "Built $(ITCH_REPLAY_TARGET)"
 
 clean:
 	rm -rf $(BUILD_DIR)
